@@ -390,7 +390,7 @@ here/
 ./gradlew test
 ```
 
-전체 41개 통과 (~18초):
+전체 41개 통과 (약 18초):
 
 | 테스트 | 종류 | 검증 |
 |---|---|---|
@@ -427,7 +427,7 @@ k6 run k6_realistic.js
 |---|---|
 | 정합성 | 정확히 10건 CONFIRMED, 990건 거절 (오버셀 0) |
 | checks pass | 100% |
-| 처리량 | ~500 req/s |
+| 처리량 | 약 500 req/s |
 | 통과 p99 | 1.69s |
 | 거절 p99 | 1.89s |
 
@@ -442,7 +442,7 @@ k6 run k6_realistic.js
 
 ### 환경 한계 명시
 
-서버 측 처리는 **~150ms 안에 완료** (서버 로그 시각 기준). 클라이언트 측정 latency 가 더 큰 것은 macOS Docker Desktop VM 의 NW 오버헤드 + Tomcat queue + connection establishment 합산. Linux native + production NW 환경에선 sub-200ms 거절 달성 기대.
+서버 측 처리는 **약 150ms 안에 완료** (서버 로그 시각 기준). 클라이언트 측정 latency 가 더 큰 것은 macOS Docker Desktop VM 의 NW 오버헤드 + Tomcat queue + connection establishment 합산. Linux native + production NW 환경에선 sub-200ms 거절 달성 기대.
 
 ---
 
