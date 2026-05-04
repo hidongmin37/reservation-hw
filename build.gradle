@@ -1,0 +1,72 @@
+plugins {
+	id 'java'
+	id 'org.springframework.boot' version '3.5.14'
+	id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'com.hah'
+version = '0.0.1-SNAPSHOT'
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(21)
+	}
+}
+
+repositories {
+	mavenCentral()
+}
+
+ext {
+	set('testcontainersVersion', '1.20.4')
+	set('resilience4jVersion', '2.2.0')
+}
+
+dependencyManagement {
+	imports {
+		mavenBom "org.testcontainers:testcontainers-bom:${testcontainersVersion}"
+	}
+}
+
+dependencies {
+	// Web
+	implementation 'org.springframework.boot:spring-boot-starter-web'
+	implementation 'org.springframework.boot:spring-boot-starter-validation'
+
+	// Persistence (MySQL via JPA)
+	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+	runtimeOnly 'com.mysql:mysql-connector-j'
+
+	// Cache
+	implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+
+	// Resilience
+	implementation "io.github.resilience4j:resilience4j-spring-boot3:${resilience4jVersion}"
+	// Resilience4j 의 @CircuitBreaker / @RateLimiter 는 @Aspect 기반.
+	// AopAutoConfiguration 활성화로 AnnotationAwareAspectJAutoProxyCreator 가 등록되어야
+	// 해당 aspect 가 프록시에 적용됨. (transitive 로 spring-aop/aspectjweaver 는 들어오지만
+	// auto-config 활성화는 별도 starter 가 필요)
+	implementation 'org.springframework.boot:spring-boot-starter-aop'
+
+	// Observability (metrics + health)
+//	implementation 'org.springframework.boot:spring-boot-starter-actuator'
+//	implementation 'io.micrometer:micrometer-registry-prometheus'
+
+	// Lombok
+	compileOnly 'org.projectlombok:lombok'
+	annotationProcessor 'org.projectlombok:lombok'
+	testCompileOnly 'org.projectlombok:lombok'
+	testAnnotationProcessor 'org.projectlombok:lombok'
+
+	// Test
+	testImplementation 'org.springframework.boot:spring-boot-starter-test'
+	testImplementation 'org.testcontainers:junit-jupiter'
+	testImplementation 'org.testcontainers:mysql'
+	testImplementation 'com.redis:testcontainers-redis:2.2.2'
+	testImplementation 'org.awaitility:awaitility'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+	useJUnitPlatform()
+}

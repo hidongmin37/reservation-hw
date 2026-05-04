@@ -1,0 +1,118 @@
+spring:
+  application:
+    name: here
+
+  datasource:
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:here_db}?useSSL=false&serverTimezone=Asia/Seoul&characterEncoding=UTF-8&allowPublicKeyRetrieval=true&createDatabaseIfNotExist=true
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:root}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 30          # 1000TPS 피크 대응 (1000TPS x 5ms = ~5 connection 지속)
+      minimum-idle: 10
+      connection-timeout: 2000       # 2초 (기본 30초 너무 김)
+      max-lifetime: 1800000          # 30분
+      idle-timeout: 600000           # 10분
+
+  jpa:
+    hibernate:
+      ddl-auto: update               # 멀티 인스턴스 안전(IF NOT EXISTS 의미). drop 없음.
+                                     # 운영은 별도 마이그레이션 도구(Flyway 등) + validate 권장 (db/schema.sql 참조)
+    defer-datasource-initialization: true  # JPA가 테이블 생성/검증 후 data.sql 실행
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQLDialect
+        format_sql: true
+        jdbc:
+          time_zone: Asia/Seoul
+    open-in-view: false              # OSIV 끔 — 트랜잭션 외 lazy loading 차단
+    show-sql: false                  # 운영 시 false. 디버깅 시 true 또는 logging.level로 제어
+
+  sql:
+    init:
+      mode: always                   # data.sql 자동 실행 (defer-datasource-initialization 덕에 JPA 다음)
+      data-locations: classpath:data.sql
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: 1000                  # 1초 — 빠른 실패가 시스템 보호에 유리
+      lettuce:
+        pool:
+          max-active: 50             # 동시 활성 커넥션
+          max-idle: 20
+          min-idle: 5
+          max-wait: 1000ms
+
+server:
+  port: ${SERVER_PORT:8080}
+  tomcat:
+    threads:
+      max: 300                       # 기본 200 → 300 (1000TPS 피크 + Phase A 평균 5ms 가정)
+      min-spare: 50
+    accept-count: 200                # 큐잉 한도
+    max-connections: 10000
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      redisStockGate:
+        registerHealthIndicator: false
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 50              # 최근 50회 호출 기준
+        minimumNumberOfCalls: 20           # 통계 신뢰 임계
+        failureRateThreshold: 50           # 50% 실패 시 OPEN (진짜 예외만 카운트)
+        # slowCall 은 부하 시 false positive 발생 위험 — 완화.
+        # *진짜 Redis 장애* 만 OPEN 트리거하도록 임계 크게 잡음.
+        slowCallDurationThreshold: 2s
+        slowCallRateThreshold: 95
+        waitDurationInOpenState: 10s
+        permittedNumberOfCallsInHalfOpenState: 5
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        recordExceptions:
+          - org.springframework.dao.QueryTimeoutException
+          - org.springframework.data.redis.RedisConnectionFailureException
+          - io.lettuce.core.RedisCommandTimeoutException
+          - io.lettuce.core.RedisException
+          - java.net.SocketTimeoutException
+      idempotencyRedis:
+        registerHealthIndicator: false
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 50
+        minimumNumberOfCalls: 20
+        failureRateThreshold: 50
+        slowCallDurationThreshold: 2s      # 부하 false positive 방지
+        slowCallRateThreshold: 95
+        waitDurationInOpenState: 10s
+        permittedNumberOfCallsInHalfOpenState: 5
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        recordExceptions:
+          - org.springframework.dao.QueryTimeoutException
+          - org.springframework.data.redis.RedisConnectionFailureException
+          - io.lettuce.core.RedisCommandTimeoutException
+          - io.lettuce.core.RedisException
+          - java.net.SocketTimeoutException
+  ratelimiter:
+    instances:
+      dbStockFallback:
+        limitForPeriod: 50                 # 평시 50TPS 만 허용
+        limitRefreshPeriod: 1s
+        timeoutDuration: 0                 # 초과 시 즉시 거절 (대기 없음)
+        registerHealthIndicator: false
+  bulkhead:
+    instances:
+      # checkout 만 격리 — booking burst 영향에서 주문서 조회 응답 안정성 확보.
+      # booking 자체엔 bulkhead 미적용 (선착순 의도 보장 — Phase A Redis gate 가 SOLD_OUT 만들게)
+      checkout:
+        maxConcurrentCalls: 80
+        maxWaitDuration: 50ms
+
+logging:
+  level:
+    root: INFO
+    com.hah.here: DEBUG
+    # 정상 거절(SOLD_OUT 등)은 GlobalExceptionHandler 에서 DEBUG.
+    # 부하 시 로그 폭증 방지를 위해 exception 패키지는 INFO 로 분리 — 알람 가치 있는 WARN/ERROR 만 출력.
+    com.hah.here.common.exception: INFO
+    org.hibernate.SQL: WARN          # SQL 로그는 디버깅 시 DEBUG로 변경
